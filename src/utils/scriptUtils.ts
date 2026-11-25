@@ -9,9 +9,9 @@ import type {
 export const MIN_EXPRESSIONS = 5;
 export const TARGET_WORD_MIN = 60;
 export const TARGET_WORD_MAX = 70;
-export const STORY_DURATION_SEC = 30;
-export const FINAL_SCREEN_DURATION_SEC = 4;
-export const TOTAL_WITH_FINAL_SEC = STORY_DURATION_SEC + FINAL_SCREEN_DURATION_SEC;
+export const TOTAL_VIDEO_SEC = 30;
+export const FINAL_SCREEN_DURATION_SEC = 3;
+export const STORY_DURATION_SEC = TOTAL_VIDEO_SEC - FINAL_SCREEN_DURATION_SEC;
 
 export function countWords(text: string): number {
   const cleaned = text
@@ -283,6 +283,28 @@ export function getBeatAtTime(
     beats[beats.length - 1] ??
     null
   );
+}
+
+export function mapBeatsToFilmTimeline(
+  beats: StoryboardBeat[],
+  storyDurationSec: number = STORY_DURATION_SEC
+): StoryboardBeat[] {
+  if (beats.length === 0) return [];
+  const rawEnd = Math.max(1, beats[beats.length - 1].endSec);
+  const scale = storyDurationSec / rawEnd;
+
+  return beats.map((beat, idx) => {
+    const startSec = Number((beat.startSec * scale).toFixed(2));
+    const endSec =
+      idx === beats.length - 1
+        ? storyDurationSec
+        : Number((beat.endSec * scale).toFixed(2));
+    return {
+      ...beat,
+      startSec,
+      endSec,
+    };
+  });
 }
 
 export const BEAT_TIME_SLOTS: Array<{

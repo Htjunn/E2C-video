@@ -94,7 +94,7 @@ async function startServer() {
       const mp4Buffer = await renderMp4FromFramesAndAudio({
         frames,
         fps: Number(fps) || 10,
-        totalDurationSec: Number(totalDurationSec) || 34,
+        totalDurationSec: Number(totalDurationSec) || 30,
         audioBeats: Array.isArray(audioBeats) ? audioBeats : [],
         includeBgm: includeBgm !== false,
       });

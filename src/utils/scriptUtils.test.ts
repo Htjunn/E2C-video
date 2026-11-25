@@ -8,8 +8,11 @@ import {
   formatSubtitleLines,
   getActiveCueAtTime,
   getBeatAtTime,
+  mapBeatsToFilmTimeline,
   parseDialogueLines,
   splitTextByExpressions,
+  STORY_DURATION_SEC,
+  TOTAL_VIDEO_SEC,
   validateExpressionCount,
 } from './scriptUtils';
 import { EXAMPLE_BEATS, EXAMPLE_EXPRESSIONS } from '../data/presets';
@@ -91,10 +94,16 @@ test('parseDialogueLines parses A: and B: speaker prefixes cleanly', () => {
   assert.equal(parsed[1].speaker, 'A');
 });
 
-test('getActiveCueAtTime and getBeatAtTime return null on the 30-34s Final screen', () => {
-  const cues = buildAllSubtitleCues(EXAMPLE_BEATS);
-  assert.equal(getActiveCueAtTime(cues, 30), null);
-  assert.equal(getActiveCueAtTime(cues, 32.5), null);
-  assert.equal(getBeatAtTime(EXAMPLE_BEATS, 30), null);
-  assert.equal(getBeatAtTime(EXAMPLE_BEATS, 33.9), null);
+test('getActiveCueAtTime and getBeatAtTime return null on the 27-30s Final screen', () => {
+  const filmBeats = mapBeatsToFilmTimeline(EXAMPLE_BEATS);
+  assert.equal(TOTAL_VIDEO_SEC, 30);
+  assert.equal(filmBeats[0].startSec, 0);
+  assert.equal(filmBeats[filmBeats.length - 1].endSec, STORY_DURATION_SEC);
+
+  const cues = buildAllSubtitleCues(filmBeats);
+  assert.equal(cues[cues.length - 1].endSec, STORY_DURATION_SEC);
+  assert.equal(getActiveCueAtTime(cues, 27), null);
+  assert.equal(getActiveCueAtTime(cues, 29.5), null);
+  assert.equal(getBeatAtTime(filmBeats, 27), null);
+  assert.equal(getBeatAtTime(filmBeats, 29.9), null);
 });

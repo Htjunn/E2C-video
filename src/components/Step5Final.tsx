@@ -21,8 +21,9 @@ import { SequenceAudioController } from '../utils/audioPlayer';
 import { CalmBgmController } from '../utils/bgmPlayer';
 import {
   buildAllSubtitleCues,
+  mapBeatsToFilmTimeline,
   STORY_DURATION_SEC,
-  TOTAL_WITH_FINAL_SEC,
+  TOTAL_VIDEO_SEC,
 } from '../utils/scriptUtils';
 
 interface Step5FinalProps {
@@ -57,7 +58,8 @@ export function Step5Final({
   const [exportSuccess, setExportSuccess] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const cues = useMemo(() => buildAllSubtitleCues(beats), [beats]);
+  const filmBeats = useMemo(() => mapBeatsToFilmTimeline(beats), [beats]);
+  const cues = useMemo(() => buildAllSubtitleCues(filmBeats), [filmBeats]);
   const activeExpressions = expressions.filter((e) => e.phrase.trim().length > 0);
 
   useEffect(() => {
@@ -93,12 +95,12 @@ export function Step5Final({
       canvas.height,
       currentTime,
       scene,
-      beats,
+      filmBeats,
       cues,
       expressions,
       true
     );
-  }, [currentTime, scene, beats, cues, expressions]);
+  }, [currentTime, scene, filmBeats, cues, expressions]);
 
   useEffect(() => {
     if (!isPlaying) {
@@ -120,14 +122,14 @@ export function Step5Final({
 
       setCurrentTime((prev) => {
         const next = prev + dt;
-        if (next >= TOTAL_WITH_FINAL_SEC) {
+        if (next >= TOTAL_VIDEO_SEC) {
           setIsPlaying(false);
           audioRef.current?.stopAll();
           bgmRef.current?.stop();
-          return TOTAL_WITH_FINAL_SEC;
+          return TOTAL_VIDEO_SEC;
         }
         if (next < STORY_DURATION_SEC) {
-          audioRef.current?.syncToTime(next, beats, true);
+          audioRef.current?.syncToTime(next, filmBeats, true);
         } else {
           audioRef.current?.pauseAll();
         }
@@ -140,14 +142,14 @@ export function Step5Final({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, beats, bgmEnabled, muted]);
+  }, [isPlaying, filmBeats, bgmEnabled, muted]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
       setIsPlaying(false);
       return;
     }
-    if (currentTime >= TOTAL_WITH_FINAL_SEC - 0.1) setCurrentTime(0);
+    if (currentTime >= TOTAL_VIDEO_SEC - 0.1) setCurrentTime(0);
     setIsPlaying(true);
   };
 
@@ -159,7 +161,7 @@ export function Step5Final({
 
     try {
       const fps = 10;
-      const totalDurationSec = TOTAL_WITH_FINAL_SEC;
+      const totalDurationSec = TOTAL_VIDEO_SEC;
       const totalFrames = fps * totalDurationSec;
 
       const offscreen = document.createElement('canvas');
@@ -178,7 +180,7 @@ export function Step5Final({
           offscreen.height,
           t,
           scene,
-          beats,
+          filmBeats,
           cues,
           expressions,
           true
@@ -192,7 +194,7 @@ export function Step5Final({
       }
 
       setExportProgress(90);
-      const audioBeats = beats.map((beat) => {
+      const audioBeats = filmBeats.map((beat) => {
         const clip = audioClips.find((c) => c.beatId === beat.id);
         return {
           beatId: beat.id,
@@ -276,7 +278,7 @@ export function Step5Final({
             type="range"
             aria-label="Final video timeline"
             min={0}
-            max={TOTAL_WITH_FINAL_SEC}
+            max={TOTAL_VIDEO_SEC}
             step={0.1}
             value={currentTime}
             onChange={(e) => {
@@ -287,7 +289,7 @@ export function Step5Final({
             className="w-full accent-[#2B5B84] h-2 cursor-pointer"
           />
           <span className="text-sm font-medium text-[#4B5B6B] tabular-nums w-12 text-right shrink-0">
-            {TOTAL_WITH_FINAL_SEC.toFixed(1)}s
+            {TOTAL_VIDEO_SEC.toFixed(1)}s
           </span>
         </div>
 
@@ -369,13 +371,13 @@ export function Step5Final({
         </div>
 
         <p className="text-sm text-[#4B5B6B]">
-          Includes the 30-second animated story plus the 4-second Final credit screen ({currentTime >= STORY_DURATION_SEC ? 'Showing Final screen' : 'Showing story beats'}).
+          Exact 30-second video: 4 animated beats (0–27s) + Final credit screen (27–30s) · {currentTime >= STORY_DURATION_SEC ? 'Showing Final screen' : 'Showing story beats'}.
         </p>
 
         {exportSuccess && (
           <div className="rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] px-4 py-3 text-base font-medium text-[#065F46] flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 shrink-0" />
-            Downloaded e2c-30s-clip.mp4 with English voice, background music, and the Final credit screen.
+            Downloaded 30-second e2c-30s-clip.mp4 with English voice, background music, and the Final credit screen.
           </div>
         )}
 

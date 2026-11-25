@@ -296,6 +296,7 @@ export default function App() {
 
         {currentStep === 4 && (
           <Step4Video
+            expressions={expressions}
             scene={scene}
             beats={beats}
             audioClips={audioClips}

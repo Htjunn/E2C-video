@@ -12,14 +12,22 @@ import { renderVideoFrame } from '../canvas/beatRenderer';
 import { STYLE_OPTIONS } from '../data/presets';
 import type {
   BeatAudioClip,
+  ExpressionItem,
   SceneConfig,
   StoryboardBeat,
 } from '../types/e2c';
 import { SequenceAudioController } from '../utils/audioPlayer';
 import { CalmBgmController } from '../utils/bgmPlayer';
-import { buildAllSubtitleCues, getBeatAtTime } from '../utils/scriptUtils';
+import {
+  buildAllSubtitleCues,
+  getBeatAtTime,
+  mapBeatsToFilmTimeline,
+  STORY_DURATION_SEC,
+  TOTAL_VIDEO_SEC,
+} from '../utils/scriptUtils';
 
 interface Step4VideoProps {
+  expressions?: ExpressionItem[];
   scene: SceneConfig;
   beats: StoryboardBeat[];
   audioClips: BeatAudioClip[];
@@ -31,6 +39,7 @@ interface Step4VideoProps {
 }
 
 export function Step4Video({
+  expressions = [],
   scene,
   beats,
   audioClips,
@@ -54,10 +63,11 @@ export function Step4Video({
 
   const [browserVoiceEnabled, setBrowserVoiceEnabled] = useState(false);
 
-  const cues = useMemo(() => buildAllSubtitleCues(beats), [beats]);
+  const filmBeats = useMemo(() => mapBeatsToFilmTimeline(beats), [beats]);
+  const cues = useMemo(() => buildAllSubtitleCues(filmBeats), [filmBeats]);
   const styleLabel =
     STYLE_OPTIONS.find((s) => s.id === scene.style)?.label ?? scene.style;
-  const activeBeat = getBeatAtTime(beats, Math.min(29.99, currentTime));
+  const activeBeat = getBeatAtTime(filmBeats, currentTime);
 
   // Initialize BGM Controller
   useEffect(() => {
@@ -96,8 +106,18 @@ export function Step4Video({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    renderVideoFrame(ctx, canvas.width, canvas.height, currentTime, scene, beats, cues, [], false);
-  }, [currentTime, scene, beats, cues]);
+    renderVideoFrame(
+      ctx,
+      canvas.width,
+      canvas.height,
+      currentTime,
+      scene,
+      filmBeats,
+      cues,
+      expressions,
+      true
+    );
+  }, [currentTime, scene, filmBeats, cues, expressions]);
 
   // Playback animation loop
   useEffect(() => {
@@ -122,15 +142,19 @@ export function Step4Video({
 
       setCurrentTime((prev) => {
         const next = prev + dt;
-        const limit = stopAtSec ?? 30;
+        const limit = stopAtSec ?? TOTAL_VIDEO_SEC;
         if (next >= limit) {
           setIsPlaying(false);
           setStopAtSec(null);
           audioRef.current?.stopAll();
           bgmRef.current?.stop();
-          return stopAtSec ? stopAtSec - 0.05 : 30;
+          return stopAtSec ? stopAtSec - 0.05 : TOTAL_VIDEO_SEC;
         }
-        audioRef.current?.syncToTime(next, beats, true);
+        if (next < STORY_DURATION_SEC) {
+          audioRef.current?.syncToTime(next, filmBeats, true);
+        } else {
+          audioRef.current?.pauseAll();
+        }
         return next;
       });
 
@@ -141,7 +165,7 @@ export function Step4Video({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, stopAtSec, beats, bgmEnabled, muted]);
+  }, [isPlaying, stopAtSec, filmBeats, bgmEnabled, muted]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -149,7 +173,7 @@ export function Step4Video({
       return;
     }
     setStopAtSec(null);
-    if (currentTime >= 29.9) {
+    if (currentTime >= TOTAL_VIDEO_SEC - 0.1) {
       setCurrentTime(0);
     }
     setIsPlaying(true);
@@ -163,8 +187,9 @@ export function Step4Video({
   };
 
   const handlePlayBeatClip = (beat: StoryboardBeat) => {
-    setCurrentTime(beat.startSec);
-    setStopAtSec(beat.endSec);
+    const mapped = filmBeats.find((b) => b.id === beat.id) ?? beat;
+    setCurrentTime(mapped.startSec);
+    setStopAtSec(mapped.endSec);
     audioRef.current?.stopAll();
     setIsPlaying(true);
   };
@@ -304,7 +329,9 @@ export function Step4Video({
             </div>
 
             <div className="text-sm font-medium text-[#4B5B6B] whitespace-nowrap">
-              {activeBeat ? `Beat: ${activeBeat.label} (${activeBeat.timeRange})` : ''}
+              {activeBeat
+                ? `Beat: ${activeBeat.label} (${activeBeat.timeRange})`
+                : 'Final credit screen'}
             </div>
           </div>
         </div>
