@@ -60,7 +60,7 @@ export function Step4Video({
   const [bgmEnabled, setBgmEnabled] = useState(true);
   const [stopAtSec, setStopAtSec] = useState<number | null>(null);
 
-  const [browserVoiceEnabled, setBrowserVoiceEnabled] = useState(false);
+  const [browserVoiceEnabled, setBrowserVoiceEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -90,7 +90,7 @@ export function Step4Video({
     ctrl.setBrowserSpeechFallback(browserVoiceEnabled);
     audioRef.current = ctrl;
     return () => {
-      ctrl.stopAll();
+      ctrl.dispose();
     };
   }, [audioClips]);
 
@@ -122,6 +122,16 @@ export function Step4Video({
     );
   }, [currentTime, scene, filmBeats, cues, expressions]);
 
+  // Synchronize voice playback cleanly outside React state updaters
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (currentTime < STORY_DURATION_SEC) {
+      audioRef.current?.syncToTime(currentTime, filmBeats, true);
+    } else {
+      audioRef.current?.pauseAll();
+    }
+  }, [isPlaying, currentTime, filmBeats]);
+
   // Playback animation loop
   useEffect(() => {
     if (!isPlaying) {
@@ -149,14 +159,7 @@ export function Step4Video({
         if (next >= limit) {
           setIsPlaying(false);
           setStopAtSec(null);
-          audioRef.current?.stopAll();
-          bgmRef.current?.stop();
           return stopAtSec ? stopAtSec - 0.05 : TOTAL_VIDEO_SEC;
-        }
-        if (next < STORY_DURATION_SEC) {
-          audioRef.current?.syncToTime(next, filmBeats, true);
-        } else {
-          audioRef.current?.pauseAll();
         }
         return next;
       });
@@ -168,16 +171,20 @@ export function Step4Video({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, stopAtSec, filmBeats, bgmEnabled, muted]);
+  }, [isPlaying, stopAtSec, bgmEnabled, muted]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
       setIsPlaying(false);
+      audioRef.current?.pauseAll();
       return;
     }
+    const startT = currentTime >= TOTAL_VIDEO_SEC - 0.1 ? 0 : currentTime;
     setStopAtSec(null);
-    if (currentTime >= TOTAL_VIDEO_SEC - 0.1) {
-      setCurrentTime(0);
+    setCurrentTime(startT);
+    audioRef.current?.primeFromUserGesture();
+    if (startT < STORY_DURATION_SEC) {
+      audioRef.current?.syncToTime(startT, filmBeats, true);
     }
     setIsPlaying(true);
   };
@@ -186,6 +193,8 @@ export function Step4Video({
     setStopAtSec(null);
     setCurrentTime(0);
     audioRef.current?.stopAll();
+    audioRef.current?.primeFromUserGesture();
+    audioRef.current?.syncToTime(0, filmBeats, true);
     setIsPlaying(true);
   };
 
@@ -194,6 +203,8 @@ export function Step4Video({
     setCurrentTime(mapped.startSec);
     setStopAtSec(mapped.endSec);
     audioRef.current?.stopAll();
+    audioRef.current?.primeFromUserGesture();
+    audioRef.current?.syncToTime(mapped.startSec, filmBeats, true);
     setIsPlaying(true);
   };
 
@@ -465,18 +476,26 @@ export function Step4Video({
           role="alert"
           className="max-w-4xl mx-auto rounded-xl bg-[#FFFBEB] border border-[#FDE68A] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-base text-[#92400E]"
         >
-          <span className="leading-snug">{voiceError}</span>
-          <div className="flex items-center gap-2 shrink-0">
+          <span className="leading-snug">
+            {browserVoiceEnabled
+              ? 'Browser English Voice is active for playback. (Add GEMINI_API_KEY in Settings / Vercel for Gemini studio voices.)'
+              : voiceError}
+          </span>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button
               type="button"
-              onClick={() => setBrowserVoiceEnabled(true)}
+              onClick={() => {
+                setBrowserVoiceEnabled(true);
+                audioRef.current?.setBrowserSpeechFallback(true);
+                audioRef.current?.speakTestSample();
+              }}
               className={`min-h-[44px] px-4 py-2 rounded-lg border text-sm font-semibold whitespace-nowrap ${
                 browserVoiceEnabled
                   ? 'bg-[#2B5B84] border-[#2B5B84] text-white'
                   : 'bg-white border-[#F59E0B] text-[#92400E]'
               }`}
             >
-              {browserVoiceEnabled ? 'Browser Voice Active' : 'Use Browser Voice'}
+              {browserVoiceEnabled ? 'Browser Voice Active (Test)' : 'Use Browser Voice'}
             </button>
             <button
               type="button"
@@ -497,7 +516,9 @@ export function Step4Video({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {beats.map((beat, idx) => {
             const isCurrent = activeBeat?.id === beat.id;
-            const hasAudio = audioClips.some((c) => c.beatId === beat.id && c.audioBase64);
+            const hasAudio =
+              audioClips.some((c) => c.beatId === beat.id && c.audioBase64) ||
+              browserVoiceEnabled;
             return (
               <button
                 key={beat.id}
