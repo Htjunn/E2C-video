@@ -11,43 +11,30 @@ import { readApiJson } from './utils/apiClient';
 
 export default function App() {
   const [audioClips, setAudioClips] = useState<BeatAudioClip[]>([]);
-  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-
-  const generateVoiceForAllBeats = async () => {
-    setIsGeneratingVoice(true);
-    setVoiceError(null);
-
-    try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          beats: EXAMPLE_BEATS,
-          scene: DEFAULT_SCENE,
-        }),
-      });
-      const data = await readApiJson<{
-        audioClips?: BeatAudioClip[];
-        error?: string;
-      }>(response);
-      if (!data.audioClips) {
-        throw new Error(data.error || 'Failed to generate English voice.');
-      }
-      setAudioClips(data.audioClips);
-    } catch (err) {
-      setVoiceError(
-        err instanceof Error
-          ? err.message
-          : 'Could not generate English voice audio.'
-      );
-    } finally {
-      setIsGeneratingVoice(false);
-    }
-  };
 
   useEffect(() => {
-    generateVoiceForAllBeats();
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            beats: EXAMPLE_BEATS,
+            scene: DEFAULT_SCENE,
+          }),
+        });
+        const data = await readApiJson<{ audioClips?: BeatAudioClip[] }>(response);
+        if (!cancelled && Array.isArray(data.audioClips)) {
+          setAudioClips(data.audioClips);
+        }
+      } catch {
+        // Browser English Voice handles playback seamlessly without blocking UI
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -60,9 +47,6 @@ export default function App() {
           scene={DEFAULT_SCENE}
           beats={EXAMPLE_BEATS}
           audioClips={audioClips}
-          isGeneratingVoice={isGeneratingVoice}
-          voiceError={voiceError}
-          onRetryVoice={generateVoiceForAllBeats}
         />
       </main>
     </div>

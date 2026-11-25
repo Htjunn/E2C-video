@@ -34,9 +34,6 @@ interface Step4VideoProps {
   scene: SceneConfig;
   beats: StoryboardBeat[];
   audioClips: BeatAudioClip[];
-  isGeneratingVoice: boolean;
-  voiceError: string | null;
-  onRetryVoice: () => void;
 }
 
 export function Step4Video({
@@ -44,9 +41,6 @@ export function Step4Video({
   scene,
   beats,
   audioClips,
-  isGeneratingVoice,
-  voiceError,
-  onRetryVoice,
 }: Step4VideoProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<SequenceAudioController | null>(null);
@@ -60,7 +54,6 @@ export function Step4Video({
   const [bgmEnabled, setBgmEnabled] = useState(true);
   const [stopAtSec, setStopAtSec] = useState<number | null>(null);
 
-  const [browserVoiceEnabled, setBrowserVoiceEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -87,16 +80,12 @@ export function Step4Video({
     const ctrl = new SequenceAudioController();
     ctrl.loadClips(audioClips);
     ctrl.setMuted(muted);
-    ctrl.setBrowserSpeechFallback(browserVoiceEnabled);
+    ctrl.setBrowserSpeechFallback(true);
     audioRef.current = ctrl;
     return () => {
       ctrl.dispose();
     };
   }, [audioClips]);
-
-  useEffect(() => {
-    audioRef.current?.setBrowserSpeechFallback(browserVoiceEnabled);
-  }, [browserVoiceEnabled]);
 
   useEffect(() => {
     audioRef.current?.setMuted(muted);
@@ -336,15 +325,6 @@ export function Step4Video({
             data-testid="video-stage-canvas"
             className="w-full h-full block"
           />
-
-          {isGeneratingVoice && (
-            <div className="absolute inset-0 bg-[#1D2733]/75 backdrop-blur-xs flex flex-col items-center justify-center gap-3 text-white p-4 text-center">
-              <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="text-lg font-semibold">
-                Generating natural English voices for all 4 beats...
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Video Controls */}
@@ -378,8 +358,7 @@ export function Step4Video({
               <button
                 type="button"
                 onClick={handleTogglePlay}
-                disabled={isGeneratingVoice}
-                className="min-h-[48px] px-5 py-2.5 rounded-xl bg-[#2B5B84] hover:bg-[#1F4566] disabled:opacity-60 text-white text-base font-semibold whitespace-nowrap shrink-0 flex items-center gap-2 transition-colors"
+                className="min-h-[48px] px-5 py-2.5 rounded-xl bg-[#2B5B84] hover:bg-[#1F4566] text-white text-base font-semibold whitespace-nowrap shrink-0 flex items-center gap-2 transition-colors"
               >
                 {isPlaying ? (
                   <>
@@ -471,43 +450,6 @@ export function Step4Video({
         </div>
       </div>
 
-      {voiceError && (
-        <div
-          role="alert"
-          className="max-w-4xl mx-auto rounded-xl bg-[#FFFBEB] border border-[#FDE68A] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-base text-[#92400E]"
-        >
-          <span className="leading-snug">
-            {browserVoiceEnabled
-              ? 'Browser English Voice is active for playback. (Add GEMINI_API_KEY in Settings / Vercel for Gemini studio voices.)'
-              : voiceError}
-          </span>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
-            <button
-              type="button"
-              onClick={() => {
-                setBrowserVoiceEnabled(true);
-                audioRef.current?.setBrowserSpeechFallback(true);
-                audioRef.current?.speakTestSample();
-              }}
-              className={`min-h-[44px] px-4 py-2 rounded-lg border text-sm font-semibold whitespace-nowrap ${
-                browserVoiceEnabled
-                  ? 'bg-[#2B5B84] border-[#2B5B84] text-white'
-                  : 'bg-white border-[#F59E0B] text-[#92400E]'
-              }`}
-            >
-              {browserVoiceEnabled ? 'Browser Voice Active (Test)' : 'Use Browser Voice'}
-            </button>
-            <button
-              type="button"
-              onClick={onRetryVoice}
-              className="min-h-[44px] px-4 py-2 rounded-lg bg-white border border-[#D4DCE6] text-sm font-semibold text-[#1D2733] whitespace-nowrap"
-            >
-              Retry Gemini Voice
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 4 Individual Beat Clip Selectors */}
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-[#1D2733]">
@@ -516,9 +458,6 @@ export function Step4Video({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {beats.map((beat, idx) => {
             const isCurrent = activeBeat?.id === beat.id;
-            const hasAudio =
-              audioClips.some((c) => c.beatId === beat.id && c.audioBase64) ||
-              browserVoiceEnabled;
             return (
               <button
                 key={beat.id}
@@ -540,7 +479,7 @@ export function Step4Video({
                   {beat.subtitles}
                 </p>
                 <div className="text-xs text-[#64748B]">
-                  {hasAudio ? 'English voice ready' : 'Visual clip ready'}
+                  English voice ready
                 </div>
               </button>
             );
