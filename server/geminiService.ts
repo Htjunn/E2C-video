@@ -44,7 +44,7 @@ function getAiClient(): GoogleGenAI {
   if (!apiKey) {
     throw new ApiServiceError(
       400,
-      'GEMINI_API_KEY is not configured. Please check Settings > Secrets in AI Studio.'
+      'GEMINI_API_KEY is not configured. Please add GEMINI_API_KEY in your environment variables or Settings > Secrets.'
     );
   }
   return new GoogleGenAI({

@@ -19,6 +19,7 @@ import type {
   SceneConfig,
   StoryboardBeat,
 } from './types/e2c';
+import { readApiJson } from './utils/apiClient';
 import { MIN_EXPRESSIONS, validateExpressionCount } from './utils/scriptUtils';
 
 export default function App() {
@@ -143,11 +144,11 @@ export default function App() {
           scene,
         }),
       });
-      const data = (await response.json()) as {
+      const data = await readApiJson<{
         beats?: StoryboardBeat[];
         error?: string;
-      };
-      if (!response.ok || !data.beats) {
+      }>(response);
+      if (!data.beats) {
         throw new Error(data.error || 'Failed to generate storyboard.');
       }
       setBeats(data.beats);
@@ -185,11 +186,11 @@ export default function App() {
           scene,
         }),
       });
-      const data = (await response.json()) as {
+      const data = await readApiJson<{
         beat?: StoryboardBeat;
         error?: string;
-      };
-      if (!response.ok || !data.beat) {
+      }>(response);
+      if (!data.beat) {
         throw new Error(data.error || 'Failed to regenerate beat.');
       }
       setBeats((prev) =>
@@ -215,11 +216,11 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ beats, scene }),
       });
-      const data = (await response.json()) as {
+      const data = await readApiJson<{
         audioClips?: BeatAudioClip[];
         error?: string;
-      };
-      if (!response.ok || !data.audioClips) {
+      }>(response);
+      if (!data.audioClips) {
         throw new Error(data.error || 'Failed to generate English voice.');
       }
       setAudioClips(data.audioClips);

@@ -17,6 +17,7 @@ import type {
   SceneConfig,
   StoryboardBeat,
 } from '../types/e2c';
+import { readApiJson } from '../utils/apiClient';
 import { SequenceAudioController } from '../utils/audioPlayer';
 import { CalmBgmController } from '../utils/bgmPlayer';
 import {
@@ -217,8 +218,8 @@ export function Step5Final({
       });
 
       if (!response.ok) {
-        const errData = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(errData.error || 'Failed to export video.');
+        await readApiJson<Record<string, unknown>>(response);
+        throw new Error('Failed to export video.');
       }
 
       const blob = await response.blob();
