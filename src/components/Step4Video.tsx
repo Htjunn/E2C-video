@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CheckCircle2,
+  Download,
   Loader2,
   Music,
   Pause,
@@ -16,6 +18,7 @@ import type {
   SceneConfig,
   StoryboardBeat,
 } from '../types/e2c';
+import { readApiJson } from '../utils/apiClient';
 import { SequenceAudioController } from '../utils/audioPlayer';
 import { CalmBgmController } from '../utils/bgmPlayer';
 import {
@@ -34,8 +37,6 @@ interface Step4VideoProps {
   isGeneratingVoice: boolean;
   voiceError: string | null;
   onRetryVoice: () => void;
-  onBack: () => void;
-  onNextFinal: () => void;
 }
 
 export function Step4Video({
@@ -46,8 +47,6 @@ export function Step4Video({
   isGeneratingVoice,
   voiceError,
   onRetryVoice,
-  onBack,
-  onNextFinal,
 }: Step4VideoProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<SequenceAudioController | null>(null);
@@ -62,6 +61,10 @@ export function Step4Video({
   const [stopAtSec, setStopAtSec] = useState<number | null>(null);
 
   const [browserVoiceEnabled, setBrowserVoiceEnabled] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const filmBeats = useMemo(() => mapBeatsToFilmTimeline(beats), [beats]);
   const cues = useMemo(() => buildAllSubtitleCues(filmBeats), [filmBeats]);
@@ -194,21 +197,106 @@ export function Step4Video({
     setIsPlaying(true);
   };
 
+  const handleDownloadMp4 = async () => {
+    setIsExporting(true);
+    setExportProgress(0);
+    setExportError(null);
+    setExportSuccess(false);
+
+    try {
+      const fps = 10;
+      const totalDurationSec = TOTAL_VIDEO_SEC;
+      const totalFrames = fps * totalDurationSec;
+
+      const offscreen = document.createElement('canvas');
+      offscreen.width = 640;
+      offscreen.height = 360;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) throw new Error('Could not initialize video export canvas.');
+
+      const frames: string[] = [];
+      const batchSize = 6;
+      for (let i = 0; i < totalFrames; i++) {
+        const t = i / fps;
+        renderVideoFrame(
+          ctx,
+          offscreen.width,
+          offscreen.height,
+          t,
+          scene,
+          filmBeats,
+          cues,
+          expressions,
+          true
+        );
+        frames.push(offscreen.toDataURL('image/jpeg', 0.74));
+
+        if ((i + 1) % batchSize === 0 || i === totalFrames - 1) {
+          setExportProgress(Math.round(((i + 1) / totalFrames) * 85));
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+
+      setExportProgress(90);
+      const audioBeats = filmBeats.map((beat) => {
+        const clip = audioClips.find((c) => c.beatId === beat.id);
+        return {
+          beatId: beat.id,
+          startSec: beat.startSec,
+          endSec: beat.endSec,
+          audioBase64: clip?.audioBase64 || '',
+        };
+      });
+
+      const response = await fetch('/api/export-mp4', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frames,
+          fps,
+          totalDurationSec,
+          audioBeats,
+          includeBgm: bgmEnabled,
+        }),
+      });
+
+      if (!response.ok) {
+        await readApiJson<Record<string, unknown>>(response);
+        throw new Error('Failed to export video.');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'e2c-30s-clip.mp4';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExportProgress(100);
+      setExportSuccess(true);
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? err.message : 'Unable to export MP4 video.'
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <section aria-labelledby="step4-heading" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div className="space-y-1.5 max-w-2xl">
-          <p className="text-sm font-medium text-[#4B5B6B]">
-            Step 4 of 5 · 4 Beat Clips & 30-Second Playback
-          </p>
           <h1
             id="step4-heading"
             className="text-3xl sm:text-4xl font-bold text-[#1D2733] tracking-tight"
           >
-            Preview your 30-second animated clip
+            30-second animated English clip
           </h1>
           <p className="text-base text-[#4B5B6B]">
-            Style: {styleLabel} · Place: {scene.place} · Voice + burned-in 2-line English subtitles
+            Style: {styleLabel} · Place: {scene.place} · Voice + background music + burned-in English subtitles
           </p>
         </div>
 
@@ -318,7 +406,7 @@ export function Step4Video({
                 {bgmEnabled ? 'Music On' : 'Music Off'}
               </button>
 
-              <button
+            <button
                 type="button"
                 aria-label={muted ? 'Unmute audio' : 'Mute audio'}
                 onClick={() => setMuted((m) => !m)}
@@ -328,12 +416,47 @@ export function Step4Video({
               </button>
             </div>
 
-            <div className="text-sm font-medium text-[#4B5B6B] whitespace-nowrap">
-              {activeBeat
-                ? `Beat: ${activeBeat.label} (${activeBeat.timeRange})`
-                : 'Final credit screen'}
-            </div>
+            <button
+              type="button"
+              disabled={isExporting}
+              onClick={handleDownloadMp4}
+              className="min-h-[48px] px-5 py-2.5 rounded-xl bg-[#1D2733] hover:bg-[#2E3C4D] disabled:opacity-70 text-white text-base font-semibold whitespace-nowrap shrink-0 flex items-center justify-center gap-2 transition-colors"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Rendering MP4 ({exportProgress}%)
+                </>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  Download Video (.mp4)
+                </>
+              )}
+            </button>
           </div>
+
+          <p className="text-sm font-medium text-[#4B5B6B]">
+            {activeBeat
+              ? `Now showing: Beat ${activeBeat.label} (${activeBeat.timeRange})`
+              : 'Now showing: Final credit screen (27–30s)'}
+          </p>
+
+          {exportSuccess && (
+            <div className="rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] px-4 py-3 text-base font-medium text-[#065F46] flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+              Downloaded 30-second e2c-30s-clip.mp4 with English voice, background music, and credit screen.
+            </div>
+          )}
+
+          {exportError && (
+            <div
+              role="alert"
+              className="rounded-xl bg-[#FEF2F2] border border-[#FECACA] px-4 py-3 text-base font-medium text-[#991B1B]"
+            >
+              {exportError}
+            </div>
+          )}
         </div>
       </div>
 
@@ -404,27 +527,11 @@ export function Step4Video({
         </div>
       </div>
 
-      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="min-h-[52px] px-6 py-3 rounded-xl border border-[#D4DCE6] bg-white hover:bg-[#EDF1F5] text-base font-medium text-[#1D2733] transition-colors"
-        >
-          Back to Storyboard
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setIsPlaying(false);
-            audioRef.current?.stopAll();
-            onNextFinal();
-          }}
-          className="min-h-[54px] px-8 py-3.5 rounded-xl bg-[#2B5B84] hover:bg-[#1F4566] text-white text-lg font-semibold transition-colors"
-        >
-          Finish & Export Video
-        </button>
-      </div>
+      <footer className="rounded-2xl bg-[#EDF1F5] border border-[#DCE3EC] px-6 py-4 text-center">
+        <p className="text-base font-semibold text-[#1D2733]">
+          Made with Google AI Studio · Script by Seojun Hwang
+        </p>
+      </footer>
     </section>
   );
 }
